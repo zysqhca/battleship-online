@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>海战棋 · 远程双人对战</title>
+<style>
+  :root {
+    --bg1: #0f2027; --bg2: #203a43; --bg3: #2c5364;
+    --accent: #4f9cf9; --accent2: #22d3ee;
+    --card: #0e1c2b; --panel: #12283a; --line: #2a4356;
+    --text: #e5eef7; --muted: #8aa4b8;
+    --hit: #ef4444; --miss: #5b7384; --ship: #67e8f9; --sunk: #f87171;
+    --gold: #fbbf24;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(160deg, var(--bg1), var(--bg2) 55%, var(--bg3));
+    display: flex; justify-content: center; padding: 18px 12px;
+  }
+  .wrap { width: 100%; max-width: 720px; }
+  h1 { text-align: center; font-size: 22px; margin: 4px 0 14px; letter-spacing: 1px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px; box-shadow: 0 12px 34px rgba(0,0,0,.4);
+  }
+  .btn {
+    border: 1px solid var(--line); background: var(--panel); color: var(--text);
+    padding: 10px 14px; border-radius: 10px; font-size: 14px; cursor: pointer;
+    transition: all .15s; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; color: #062033; }
+  .btn.primary:hover { filter: brightness(1.1); color: #062033; }
+  .btn.active { background: var(--accent); border-color: var(--accent); color: #062033; }
+
+  input[type=text] {
+    background: var(--panel); border: 1px solid var(--line); color: var(--text);
+    padding: 11px 12px; border-radius: 10px; font-size: 15px; letter-spacing: 2px;
+    width: 140px; text-transform: uppercase; text-align: center;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .col { display: flex; flex-direction: column; gap: 10px; }
+  .center { text-align: center; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .big { font-size: 18px; font-weight: 700; }
+
+  /* 房间号展示 */
+  .roomcode { font-size: 34px; font-weight: 800; letter-spacing: 6px; color: var(--gold); font-variant-numeric: tabular-nums; }
+
+  /* 棋盘 */
+  .boards { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  .boardbox { flex: 1 1 280px; min-width: 0; }
+  .boardbox h3 { font-size: 14px; margin: 0 0 6px; display: flex; justify-content: space-between; align-items: center; }
+  .grid {
+    display: grid; gap: 2px; background: var(--line); padding: 2px; border-radius: 6px;
+    aspect-ratio: 1 / 1; width: 100%;
+  }
+  .cell {
+    background: var(--panel); border-radius: 2px; position: relative; cursor: default;
+  }
+  .cell.ship { background: #1d4ed8; }
+  .cell.ship.hit { background: var(--sunk); }
+  .cell.decoy { background: #0d9488; }
+  .cell.decoy.hit { background: var(--hit); }
+  .cell.enemy:hover { background: #2b4a63; cursor: crosshair; }
+  .cell.enemy.miss { background: var(--miss); cursor: default; }
+  .cell.enemy.hit { background: var(--hit); cursor: default; }
+  .cell.enemy.sunk { background: #7f1d1d; cursor: default; }
+  .cell.target { outline: 2px solid var(--gold); outline-offset: -2px; }
+  .cell .dot { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .cell.hit .dot::after { content: "✕"; color: #fff; font-weight: 800; }
+  .cell.enemy.miss .dot::after { content: "·"; color: #cbd5e1; font-size: 22px; line-height: 1; }
+
+  /* HUD */
+  .hud { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+  .stat b { color: var(--gold); }
+  .banner { text-align: center; padding: 8px; border-radius: 8px; margin: 10px 0; font-weight: 700; }
+  .banner.my { background: #064e3b; color: #6ee7b7; }
+  .banner.opp { background: #7c2d12; color: #fdba74; }
+
+  .country-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .country {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+    cursor: pointer; transition: all .15s;
+  }
+  .country:hover { border-color: var(--accent); }
+  .country.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .country .flag { font-size: 26px; }
+  .country .name { font-weight: 700; margin: 4px 0 2px; }
+  .country .desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  .shiplist { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .shipchip { display: flex; gap: 2px; padding: 4px 6px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); }
+  .shipchip span { width: 12px; height: 12px; border-radius: 2px; background: #1d4ed8; }
+  .shipchip.done { opacity: .45; }
+  .shipchip.cur { border-color: var(--gold); }
+
+  .legend { font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
+  @media (max-width: 560px) {
+    .country-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🚢 海战棋 · 远程双人对战</h1>
+
+  <!-- 大厅 -->
+  <div class="card" id="screen-menu">
+    <div class="col">
+      <button class="btn primary" id="btnCreate" style="justify-content:center;">➕ 创建房间</button>
+      <div class="row" style="justify-content:center;">
+        <input type="text" id="roomInput" placeholder="房间号" maxlength="5" autocomplete="off">
+        <button class="btn" id="btnJoin">加入房间</button>
+      </div>
+      <p class="muted center" id="menuMsg"></p>
+    </div>
+  </div>
+
+  <!-- 等待对手 -->
+  <div class="card center" id="screen-wait" style="display:none;">
+    <p class="muted">把房间号发给朋友，等 TA 加入</p>
+    <div class="roomcode" id="roomDisplay"></div>
+    <p class="muted">等待对手加入……</p>
+  </div>
+
+  <!-- 选国家 -->
+  <div class="card" id="screen-country" style="display:none;">
+    <h3 style="margin-top:0;">选择你的国家</h3>
+    <div class="country-grid" id="countryGrid"></div>
+    <div class="row" style="margin-top:14px; justify-content:space-between;">
+      <span class="muted" id="oppCountryHint"></span>
+      <button class="btn primary" id="btnCountryOk">确定</button>
+    </div>
+  </div>
+
+  <!-- 布阵 -->
+  <div class="card" id="screen-placement" style="display:none;">
+    <h3 style="margin-top:0;">布置你的舰队</h3>
+    <p class="muted">点击棋盘放置当前船只，<b>方向</b>按钮切换横竖。</p>
+    <div class="boards">
+      <div class="boardbox">
+        <div class="grid" id="placeGrid" style="grid-template-columns: repeat(10, 1fr);"></div>
+      </div>
+    </div>
+    <div class="shiplist" id="shipList"></div>
+    <div class="row" style="margin-top:12px; justify-content:space-between;">
+      <button class="btn" id="btnRotate">🔁 方向：横</button>
+      <button class="btn primary" id="btnPlaceDone" disabled>完成布阵</button>
+    </div>
+    <p class="muted center" id="placeMsg">等待对手完成布阵……</p>
+  </div>
+
+  <!-- 对战 -->
+  <div class="card" id="screen-battle" style="display:none;">
+    <div class="banner" id="turnBanner"></div>
+    <div class="boards">
+      <div class="boardbox">
+        <h3>敌方海域 <span class="muted" id="hint"></span></h3>
+        <div class="grid" id="enemyGrid" style="grid-template-columns: repeat(10, 1fr);"></div>
+      </div>
+      <div class="boardbox">
+        <h3>我方海域</h3>
+        <div class="grid" id="myGrid" style="grid-template-columns: repeat(10, 1fr);"></div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i style="background:#1d4ed8;"></i>我方战舰</span>
+      <span><i style="background:#0d9488;"></i>诱饵</span>
+      <span><i style="background:#ef4444;"></i>命中</span>
+      <span><i style="background:#5b7384;"></i>未命中</span>
+    </div>
+
+    <div class="hud" id="hud"></div>
+    <div class="row" id="actionBar" style="margin-top:10px; flex-wrap:wrap;"></div>
+    <p class="muted center" id="battleMsg"></p>
+  </div>
+
+  <!-- 结算 -->
+  <div class="card center" id="screen-over" style="display:none;">
+    <div style="font-size:52px;" id="overEmoji">🎉</div>
+    <div class="big" id="overTitle"></div>
+    <p class="muted" id="overSub"></p>
+    <div class="row" style="justify-content:center; margin-top:14px;">
+      <button class="btn primary" id="btnRematch">再来一局</button>
+      <button class="btn" id="btnLobby">返回大厅</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= 常量 ================= */
+const SIZE = 10;
+const COLS = 'ABCDEFGHIJ';
+const COUNTRY_INFO = {
+  china: { name:'中国', flag:'🇨🇳', desc:'发展迅速：第1-10次行动1攻，11-20次2攻，21次起3攻' },
+  russia:{ name:'俄罗斯', flag:'🇷🇺', desc:'大伊万：1×4与1×3各带核弹，被击沉时引爆3×3' },
+  usa:   { name:'美国', flag:'🇺🇸', desc:'航母打击群：每2回合可空袭一条1×3直线' },
+  uk:    { name:'英国', flag:'🇬🇧', desc:'皇家海军：1×4拆成两艘1×2，军费+1/回合' },
+};
+const ITEMS = {
+  row:   { name:'✈️ 飞机轰炸', cost:14, desc:'轰炸一整行' },
+  col:   { name:'🚤 潜水艇', cost:14, desc:'轰炸一整列' },
+  nuke:  { name:'☢️ 核弹', cost:22, desc:'3×3区域', limit:2 },
+  decoy: { name:'🎭 诱饵舰船', cost:8, desc:'布1×1假船' },
+};
+const FLEET_BASE = [4, 3, 2, 2];
+const FLEET_UK   = [3, 2, 2, 2, 2];
+
+/* ================= 状态 ================= */
+let ws = null;
+let sendQueue = [];
+let me = -1;            // 0 或 1
+let first = 0;
+let activePlayer = -1;
+let phase = 'menu';     // menu|wait|country|placement|battle|over
+let roomCode = '';
+let myCountry = null, oppCountry = null;
+let myFleet = [];       // {id,size,cells:[],hits,sunk,nuke}
+let myGrid = [];        // 每格 {ship:id|null, hit:bool}
+let enemyView = [];     // 每格 'u'|'m'|'h'
+let enemySunkIds = [];  // 已被击沉的敌船 id
+let gold = 10;          // 初始军费
+let myAP = 0, myTurnCount = 0, itemUsedThisTurn = false;
+let shopNukeUsed = 0, usaCooldown = 0;
+let myReady = false, oppReady = false, myRematch = false, oppRematch = false;
+let busy = false; // 正在等待一次攻击的结果回传，防止重复开火
+let lastStrikeSource = null; // 上次攻击的来源（用于判断普通射击命中奖励）
+
+let targetMode = null;  // null|shot|row|col|nuke|airstrike|decoy
+let orient = 'h';       // 布阵/空袭方向
+let placeIndex = 0;     // 正在布置第几艘船
+let selCountry = null;
+
+/* ================= 工具 ================= */
+const $ = id => document.getElementById(id);
+function cellKey(r,c){ return r*SIZE + c; }
+function coordName(r,c){ return COLS[c] + (r+1); }
+function inB(r,c){ return r>=0 && r<SIZE && c>=0 && c<SIZE; }
+function cells3x3(r,c){
+  const out=[];
+  for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++){
+    const rr=r+dr, cc=c+dc; if(inB(rr,cc)) out.push({r:rr,c:cc});
+  }
+  return out;
+}
+function line3(r,c,o){
+  const out=[];
+  for(let k=-1;k<=1;k++){
+    const rr=o==='h'?r:r+k, cc=o==='h'?c+k:c;
+    if(inB(rr,cc)) out.push({r:rr,c:cc});
+  }
+  return out; // 越界时裁剪
+}
+function send(obj){ if(ws && ws.readyState===1) ws.send(JSON.stringify(obj)); else sendQueue.push(obj); }
+function show(id){ ['screen-menu','screen-wait','screen-country','screen-placement','screen-battle','screen-over'].forEach(s=>{ $(s).style.display = (s===id)?'block':'none'; }); }
+function fleetSizeFor(c){ return (c==='uk'?FLEET_UK:FLEET_BASE).length; }
+
+/* ================= 联网 ================= */
+function connect(){
+  sendQueue = [];
+  const proto = location.protocol==='https:'?'wss':'ws';
+  ws = new WebSocket(proto+'://'+location.host+'/ws');
+  ws.onopen = () => { while(sendQueue.length) ws.send(JSON.stringify(sendQueue.shift())); };
+  ws.onerror = () => { if(phase==='menu') $('menuMsg').textContent = '连接服务器失败，请确认服务器已启动'; };
+  ws.onmessage = ev => { let m; try{ m=JSON.parse(ev.data);}catch(e){return;} handle(m); };
+  ws.onclose = () => { if(phase!=='menu'){ alert('连接已断开'); location.reload(); } };
+}
+function handle(m){
+  switch(m.type){
+    case 'assigned':
+      me = m.you; roomCode = m.room;
+      $('roomDisplay').textContent = roomCode;
+      phase='wait'; show('screen-wait');
+      break;
+    case 'started':
+      first = m.first; activePlayer = first;
+      phase='country'; show('screen-country'); renderCountry();
+      break;
+    case 'error':
+      $('menuMsg').textContent = m.message; break;
+    case 'peerLeft':
+      if(phase!=='over'){ alert('对手已离开'); location.reload(); }
+      break;
+    case 'hello':
+      oppCountry = m.country; $('oppCountryHint').textContent = '对手已选择：'+COUNTRY_INFO[m.country].flag+' '+COUNTRY_INFO[m.country].name;
+      break;
+    case 'ready':
+      oppReady = true; tryStartBattle(); break;
+    case 'endTurn':
+      activePlayer = 1-activePlayer;
+      if(activePlayer===me) startMyTurn(); else renderBattle();
+      break;
+    case 'strike': onStrike(m); break;
+    case 'strikeResult': onStrikeResult(m); break;
+    case 'nukeResult': onNukeResult(m); break;
+    case 'rematch':
+      oppRematch = true; tryRematch(); break;
+    case 'gameOver':
+      endGame(); break;
+  }
+}
+
+/* ================= 大厅 ================= */
+$('btnCreate').onclick = () => { connect(); send({type:'create'}); };
+$('btnJoin').onclick = () => {
+  const code = $('roomInput').value.trim();
+  if(!code) return;
+  connect(); send({type:'join', room:code});
+};
+
+/* ================= 选国家 ================= */
+function renderCountry(){
+  const g = $('countryGrid'); g.innerHTML='';
+  Object.keys(COUNTRY_INFO).forEach(k=>{
+    const info = COUNTRY_INFO[k];
+    const d = document.createElement('div');
+    d.className='country'+(selCountry===k?' sel':'');
+    d.innerHTML = '<div class="flag">'+info.flag+'</div><div class="name">'+info.name+'</div><div class="desc">'+info.desc+'</div>';
+    d.onclick = ()=>{ selCountry=k; renderCountry(); };
+    g.appendChild(d);
+  });
+  $('btnCountryOk').disabled = !selCountry;
+}
+$('btnCountryOk').onclick = () => {
+  myCountry = selCountry;
+  send({type:'hello', country:myCountry});
+  setupFleet();
+  phase='placement'; show('screen-placement'); renderPlacement();
+};
+
+/* ================= 布阵 ================= */
+function setupFleet(){
+  const sizes = myCountry==='uk' ? FLEET_UK : FLEET_BASE;
+  myFleet = sizes.map((size,i)=>({ id:'s'+i, size, cells:[], hits:0, sunk:false, nuke:false }));
+  if(myCountry==='russia'){
+    const sorted = [...myFleet].sort((a,b)=>b.size-a.size).slice(0,2);
+    sorted.forEach(s=>s.nuke=true);
+  }
+  myGrid = [];
+  for(let i=0;i<SIZE*SIZE;i++) myGrid.push({ship:null, hit:false});
+  placeIndex = 0; orient='h';
+}
+function canPlace(idx, r, c, o){
+  const ship = myFleet[idx]; if(!ship) return false;
+  for(let k=0;k<ship.size;k++){
+    const rr = o==='h'? r : r+k;
+    const cc = o==='h'? c+k : c;
+    if(!inB(rr,cc)) return false;
+    if(myGrid[cellKey(rr,cc)].ship) return false;
+  }
+  return true;
+}
+function placeShipAt(r,c){
+  const ship = myFleet[placeIndex]; if(!ship) return;
+  if(!canPlace(placeIndex,r,c,orient)) return;
+  ship.cells=[];
+  for(let k=0;k<ship.size;k++){
+    const rr = orient==='h'? r : r+k;
+    const cc = orient==='h'? c+k : c;
+    myGrid[cellKey(rr,cc)].ship = ship.id;
+    ship.cells.push(cellKey(rr,cc));
+  }
+  placeIndex++;
+  renderPlacement();
+}
+function renderPlacement(){
+  const g = $('placeGrid'); g.innerHTML='';
+  for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){
+    const d=document.createElement('div');
+    d.className='cell'+(myGrid[cellKey(r,c)].ship?' ship':'');
+    d.onclick=()=>placeShipAt(r,c);
+    g.appendChild(d);
+  }
+  // 船只列表
+  const sl = $('shipList'); sl.innerHTML='';
+  myFleet.forEach((s,i)=>{
+    const chip=document.createElement('div');
+    chip.className='shipchip'+(i<placeIndex?' done':(i===placeIndex?' cur':''));
+    let seg=''; for(let k=0;k<s.size;k++) seg+='<span></span>';
+    chip.innerHTML = seg + (s.nuke?' ☢':'');
+    sl.appendChild(chip);
+  });
+  $('btnPlaceDone').disabled = placeIndex < myFleet.length;
+  $('placeMsg').textContent = oppReady ? '双方均已布阵，正在进入战斗……' : '等待对手完成布阵……';
+}
+$('btnRotate').onclick = ()=>{ orient = orient==='h'?'v':'h'; $('btnRotate').textContent='🔁 方向：'+(orient==='h'?'横':'竖'); };
+$('btnPlaceDone').onclick = ()=>{
+  if(placeIndex<myFleet.length) return;
+  myReady=true; send({type:'ready'});
+  renderPlacement(); tryStartBattle();
+};
+function tryStartBattle(){
+  if(myReady && oppReady && phase==='placement'){
+    phase='battle'; show('screen-battle');
+    // 初始化敌方视图
+    enemyView=[]; for(let i=0;i<SIZE*SIZE;i++) enemyView.push('u');
+    enemySunkIds=[];
+    if(activePlayer===me) startMyTurn(); else renderBattle();
+  }
+}
+
+/* ================= 战斗：回合 ================= */
+function calcAP(){
+  if(myCountry!=='china') return 1;
+  if(myTurnCount<=10) return 1;
+  if(myTurnCount<=20) return 2;
+  return 3;
+}
+function startMyTurn(){
+  busy=false;
+  myTurnCount++;
+  itemUsedThisTurn=false;
+  gold += 2 + (myCountry==='uk'?1:0);
+  if(myCountry==='usa' && usaCooldown>0) usaCooldown--;
+  myAP = calcAP();
+  targetMode=null;
+  renderBattle();
+}
+
+/* ================= 战斗：渲染 ================= */
+function renderBattle(){
+  // 轮次与回合标题
+  const myTurn = activePlayer===me;
+  const b = $('turnBanner');
+  if(myTurn){ b.className='banner my'; b.textContent='⚔️ 你的回合（行动点：'+myAP+'）'; }
+  else { b.className='banner opp'; b.textContent='⏳ 对手回合，请等待……'; }
+  $('hint').textContent = targetMode ? modeHint() : '点击格子射击';
+
+  // 敌方棋盘
+  const eg = $('enemyGrid'); eg.innerHTML='';
+  for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){
+    const d=document.createElement('div');
+    const st = enemyView[cellKey(r,c)];
+    let cls='cell enemy';
+    if(st==='m') cls+=' miss';
+    if(st==='h') cls+=' hit';
+    d.className=cls;
+    d.innerHTML='<span class="dot"></span>';
+    if(myTurn && st==='u') d.onclick=()=>enemyClick(r,c);
+    eg.appendChild(d);
+  }
+
+  // 我方棋盘
+  const mg = $('myGrid'); mg.innerHTML='';
+  for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){
+    const cell = myGrid[cellKey(r,c)];
+    const d=document.createElement('div');
+    let cls='cell';
+    if(cell.ship==='decoy'){ cls+=' decoy'; }
+    else if(cell.ship){ cls+=' ship'; }
+    if(cell.hit){ cls+=' hit'; }
+    d.className=cls;
+    d.innerHTML='<span class="dot"></span>';
+    if(targetMode==='decoy' && myTurn) d.onclick=()=>placeDecoy(r,c);
+    mg.appendChild(d);
+  }
+
+  // HUD
+  $('hud').innerHTML =
+    '<span class="stat">💰 军费 <b>'+gold+'</b></span>'+
+    '<span class="stat">🎯 行动点 <b>'+myAP+'</b></span>'+
+    '<span class="stat">第 <b>'+myTurnCount+'</b> 次行动</span>'+
+    '<span class="stat">你：<b>'+(myCountry?COUNTRY_INFO[myCountry].name:'-')+'</b></span>'+
+    '<span class="stat">对手：<b>'+(oppCountry?COUNTRY_INFO[oppCountry].name:'-')+'</b></span>'+
+    '<span class="stat">击沉 <b>'+enemySunkIds.length+'/'+fleetSizeFor(oppCountry)+'</b></span>';
+
+  renderActions();
+}
+function modeHint(){
+  const map={row:'点击任意格子：轰炸该行', col:'点击任意格子：轰炸该列', nuke:'点击任意格子：以其为中心3×3', airstrike:'点击任意格子：放置1×3直线（'+ (orient==='h'?'横':'竖') +'）', decoy:'点击我方棋盘空格：放置诱饵'};
+  return map[targetMode]||'';
+}
+function renderActions(){
+  const bar = $('actionBar'); bar.innerHTML='';
+  const myTurn = activePlayer===me && phase==='battle';
+  if(!myTurn){ return; }
+
+  const addBtn=(label, cb, dis, active)=>{
+    const b=document.createElement('button');
+    b.className='btn'+(active?' active':''); b.textContent=label; b.disabled=!!dis;
+    b.onclick=cb; bar.appendChild(b);
+  };
+  addBtn('🔫 普通射击(命中+1点)', ()=>setMode('shot'), myAP<1, targetMode==='shot');
+  addBtn(ITEMS.row.name+'('+ITEMS.row.cost+')', ()=>setMode('row'), myAP<1||gold<ITEMS.row.cost||itemUsedThisTurn, targetMode==='row');
+  addBtn(ITEMS.col.name+'('+ITEMS.col.cost+')', ()=>setMode('col'), myAP<1||gold<ITEMS.col.cost||itemUsedThisTurn, targetMode==='col');
+  addBtn(ITEMS.nuke.name+'('+ITEMS.nuke.cost+')', ()=>setMode('nuke'), myAP<1||gold<ITEMS.nuke.cost||itemUsedThisTurn||shopNukeUsed>=2, targetMode==='nuke');
+  addBtn(ITEMS.decoy.name+'('+ITEMS.decoy.cost+')', ()=>setMode('decoy'), myAP<1||gold<ITEMS.decoy.cost||itemUsedThisTurn, targetMode==='decoy');
+  if(myCountry==='usa'){
+    const carrierSunk = myFleet[0] && myFleet[0].sunk;
+    addBtn('🛩 空袭'+(usaCooldown>0?'('+usaCooldown+')':''), ()=>setMode('airstrike'), myAP<1||usaCooldown>0||carrierSunk, targetMode==='airstrike');
+    if(targetMode==='airstrike'){
+      addBtn('🔁 方向：'+(orient==='h'?'横':'竖'), ()=>{ orient=orient==='h'?'v':'h'; renderBattle(); }, false, false);
+    }
+  }
+  if(myCountry==='russia'){
+    myFleet.filter(s=>s.nuke && s.hits>0 && !s.sunk).forEach(s=>{
+      addBtn('💥 自毁引爆', ()=>selfDestruct(s.id), myAP<1, false);
+    });
+  }
+  addBtn('✅ 结束回合', endTurn, busy, false);
+}
+function setMode(m){
+  targetMode = (targetMode===m)? null : m;
+  renderBattle();
+}
+
+/* ================= 战斗：攻击 ================= */
+function enemyClick(r,c){
+  if(busy) return;
+  if(activePlayer!==me || myAP<1) return;
+  if(enemyView[cellKey(r,c)]!=='u') return;
+  if(!targetMode) targetMode='shot';
+  switch(targetMode){
+    case 'shot': myAP--; doStrike([{r,c}], 'shot', 0); break;
+    case 'row': {
+      const cells=[]; for(let cc=0;cc<SIZE;cc++) cells.push({r,c:cc});
+      if(gold<ITEMS.row.cost||itemUsedThisTurn) return;
+      gold-=ITEMS.row.cost; itemUsedThisTurn=true; myAP--; targetMode=null;
+      doStrike(cells,'row',0); break;
+    }
+    case 'col': {
+      const cells=[]; for(let rr=0;rr<SIZE;rr++) cells.push({r:rr,c});
+      if(gold<ITEMS.col.cost||itemUsedThisTurn) return;
+      gold-=ITEMS.col.cost; itemUsedThisTurn=true; myAP--; targetMode=null;
+      doStrike(cells,'col',0); break;
+    }
+    case 'nuke': {
+      if(gold<ITEMS.nuke.cost||itemUsedThisTurn||shopNukeUsed>=2) return;
+      gold-=ITEMS.nuke.cost; itemUsedThisTurn=true; shopNukeUsed++; myAP--; targetMode=null;
+      doStrike(cells3x3(r,c),'nuke',0); break;
+    }
+    case 'airstrike': {
+      if(myCountry!=='usa'||usaCooldown>0) return;
+      myAP--; usaCooldown=2; targetMode=null;
+      doStrike(line3(r,c,orient),'airstrike',0); break;
+    }
+  }
+}
+function doStrike(cells, source, id){
+  busy=true;
+  lastStrikeSource = source;
+  send({type:'strike', cells, source, id});
+  renderBattle();
+}
+// 在我方棋盘上判定一格（处理真船/诱饵），返回结果或 null（该格已命中）
+function resolveMyCell(r,c){
+  const idx=cellKey(r,c); const cell=myGrid[idx];
+  if(cell.hit) return null;
+  cell.hit=true;
+  if(!cell.ship) return {hit:false, sunk:false, sunkShip:null};
+  if(cell.ship==='decoy'){ cell.ship=null; return {hit:true, sunk:false, sunkShip:null}; } // 诱饵只报命中不报击沉
+  const ship=myFleet.find(s=>s.id===cell.ship);
+  ship.hits++;
+  ship.lastHit = {r,c};
+  let sunk=false, sunkShip=null;
+  if(ship.hits>=ship.size){ ship.sunk=true; sunk=true; sunkShip=ship.id; }
+  return {hit:true, sunk, sunkShip};
+}
+// 作为防守方，处理对方攻击
+function onStrike(m){
+  const {cells, source} = m;
+  const results=[]; const nukes=[];
+  for(const {r,c} of cells){
+    const res = resolveMyCell(r,c);
+    if(!res) continue;
+    results.push({r,c, hit:res.hit, sunk:res.sunk, sunkShip:res.sunkShip});
+    if(res.sunk){
+      const ship = myFleet.find(s=>s.id===res.sunkShip);
+      if(ship && ship.nuke){ // 死亡核爆（任何来源击沉均触发，但不连锁）
+        nukes.push({cells:cells3x3(r,c), fromShip:ship.id});
+      }
+    }
+  }
+  send({type:'strikeResult', id:m.id, results, nukes});
+  if(myFleet.every(s=>s.sunk)){ send({type:'gameOver'}); endGame(); }
+  renderBattle();
+}
+// 作为攻击方，收到结果
+function onStrikeResult(m){
+  busy=false;
+  const {results, nukes} = m;
+  for(const res of results){
+    const idx=cellKey(res.r,res.c);
+    enemyView[idx] = res.hit?'h':'m';
+    if(res.hit){ gold+=2; }
+    if(res.sunk && res.sunkShip && !enemySunkIds.includes(res.sunkShip)){
+      enemySunkIds.push(res.sunkShip); gold+=5;
+    }
+  }
+  // 普通射击命中奖励：命中后额外 +1 行动点
+  if(lastStrikeSource==='shot' && results.some(r=>r.hit)){
+    myAP += 1;
+  }
+  // 若触发了对方核弹（死亡核爆），我方被轰炸
+  if(nukes && nukes.length){
+    const myRes=[];
+    for(const nk of nukes){
+      for(const {r,c} of nk.cells){
+        const res = resolveMyCell(r,c);
+        if(!res) continue;
+        myRes.push({r,c, hit:res.hit, sunk:res.sunk, sunkShip:res.sunkShip});
+      }
+    }
+    send({type:'nukeResult', id:m.id, results:myRes});
+    if(myFleet.every(s=>s.sunk)){ send({type:'gameOver'}); endGame(); }
+  }
+  if(enemySunkIds.length >= fleetSizeFor(oppCountry)){ send({type:'gameOver'}); endGame(); }
+  if(!(myFleet.every(s=>s.sunk))) renderBattle();
+}
+// 作为俄罗斯防守方，收到核爆结果（我方核弹命中对方）
+function onNukeResult(m){
+  for(const res of m.results){
+    const idx=cellKey(res.r,res.c);
+    enemyView[idx] = res.hit?'h':'m';
+    if(res.hit) gold+=2;
+    if(res.sunk && res.sunkShip && !enemySunkIds.includes(res.sunkShip)){
+      enemySunkIds.push(res.sunkShip); gold+=5;
+    }
+  }
+  if(enemySunkIds.length >= fleetSizeFor(oppCountry)){ send({type:'gameOver'}); endGame(); }
+  renderBattle();
+}
+
+/* ================= 战斗：诱饵 ================= */
+function placeDecoy(r,c){
+  const idx=cellKey(r,c);
+  if(myGrid[idx].ship || myGrid[idx].hit) return;
+  if(gold<ITEMS.decoy.cost||itemUsedThisTurn||myAP<1) return;
+  myGrid[idx].ship='decoy';
+  gold-=ITEMS.decoy.cost; itemUsedThisTurn=true; myAP--; targetMode=null;
+  renderBattle();
+}
+
+/* ================= 战斗：俄罗斯自毁引爆 ================= */
+function selfDestruct(shipId){
+  if(busy || activePlayer!==me || myAP<1) return;
+  const ship = myFleet.find(s=>s.id===shipId);
+  if(!ship || ship.sunk || ship.hits<1 || !ship.nuke) return;
+  ship.sunk = true;
+  ship.cells.forEach(idx=>{ myGrid[idx].hit = true; });
+  const c = ship.lastHit || {r:0,c:0};
+  myAP--;
+  doStrike(cells3x3(c.r, c.c), 'selfNuke', 0);
+  if(myFleet.every(s=>s.sunk)){ send({type:'gameOver'}); endGame(); }
+}
+
+/* ================= 战斗：结束回合 ================= */
+function endTurn(){
+  if(busy || activePlayer!==me) return;
+  myAP=0; targetMode=null;
+  send({type:'endTurn'});
+  activePlayer=1-activePlayer;
+  renderBattle();
+}
+
+/* ================= 胜负 ================= */
+function endGame(){
+  if(phase==='over') return;
+  phase='over';
+  const iWon = enemySunkIds.length >= fleetSizeFor(oppCountry);
+  const iLost = myFleet.every(s=>s.sunk);
+  $('overEmoji').textContent = iWon ? '🎉' : '💥';
+  $('overTitle').textContent = iWon ? '胜利！' : '战败';
+  $('overSub').textContent = '你用 '+COUNTRY_INFO[myCountry].name+' 击沉了 '+enemySunkIds.length+' 艘敌船';
+  show('screen-over');
+}
+$('btnRematch').onclick = ()=>{
+  myRematch=true; send({type:'rematch'}); tryRematch();
+};
+function tryRematch(){
+  if(myRematch && oppRematch){
+    resetForRematch();
+    phase='placement'; show('screen-placement');
+    myReady=false; oppReady=false; myRematch=false; oppRematch=false;
+    setupFleet(); renderPlacement();
+  } else if(myRematch){
+    $('overSub').textContent = '等待对手同意再来一局……';
+  }
+}
+function resetForRematch(){
+  gold=10; myAP=0; myTurnCount=0; itemUsedThisTurn=false;
+  shopNukeUsed=0; usaCooldown=0; targetMode=null; enemySunkIds=[];
+  busy=false;
+  first = 1-first; activePlayer = first; // 换先手
+}
+$('btnLobby').onclick = ()=>{ location.reload(); };
+
+/* ================= 初始化 ================= */
+renderCountry();
+</script>
+</body>
+</html>
