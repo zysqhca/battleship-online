@@ -545,10 +545,10 @@ function enemyClick(r,c){
     }
   }
 }
-function doStrike(cells, source, id){
+function doStrike(cells, source, id, reveal){
   busy=true;
   lastStrikeSource = source;
-  send({type:'strike', cells, source, id});
+  send({type:'strike', cells, source, id, reveal});
   renderBattle();
 }
 // 在我方棋盘上判定一格（处理真船/诱饵），返回结果或 null（该格已命中）
@@ -568,6 +568,15 @@ function resolveMyCell(r,c){
 // 作为防守方，处理对方攻击
 function onStrike(m){
   const {cells, source} = m;
+  // 俄罗斯自毁引爆：把自爆舰船在防守方视角的敌方海域标红，并计入已击沉
+  if(m.reveal){
+    for(const {r,c} of m.reveal.cells){
+      enemyView[cellKey(r,c)] = 'h';
+    }
+    if(m.reveal.shipId && !enemySunkIds.includes(m.reveal.shipId)){
+      enemySunkIds.push(m.reveal.shipId);
+    }
+  }
   const results=[]; const nukes=[];
   for(const {r,c} of cells){
     const res = resolveMyCell(r,c);
@@ -649,7 +658,9 @@ function selfDestruct(shipId){
   ship.cells.forEach(idx=>{ myGrid[idx].hit = true; });
   const c = ship.lastHit || {r:0,c:0};
   myAP--;
-  doStrike(cells3x3(c.r, c.c), 'selfNuke', 0);
+  // 自爆的舰船要告知对方：对方视角的敌方海域标红，并计入已击沉
+  const reveal = { shipId: ship.id, cells: ship.cells.map(idx=>({ r: Math.floor(idx/SIZE), c: idx%SIZE })) };
+  doStrike(cells3x3(c.r, c.c), 'selfNuke', 0, reveal);
   if(myFleet.every(s=>s.sunk)){ send({type:'gameOver'}); endGame(); }
 }
 
