@@ -1,11 +1,4 @@
 node_modules/
+.wrangler/
 npm-debug.log
 .DS_Store
-
-# 本机临时文件 / 与本项目无关的其他任务文件
-.claude/
-*.pdf
-_article_text.txt
-_rules_extracted.txt
-make_docx.py
-论文评价报告.docx
